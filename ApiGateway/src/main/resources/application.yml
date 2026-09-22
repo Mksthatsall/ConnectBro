@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: user-service
+              uri: http://localhost:9010
+              predicates:
+                - Path=/api/v1/users/**
+              filters:
+                - RewritePath=/api/v1/users/?(?<segment>.*), /$\{segment}
+
+            - id: post-service
+              uri: http://localhost:9020
+              predicates:
+                - Path=/api/v1/posts/**
+              filters:
+                - RewritePath=/api/v1/posts/?(?<segment>.*), /posts/$\{segment}
+                - name: AuthenticationFilter
+
+            - id: connections-service
+              uri: http://localhost:9060
+              predicates:
+                - Path=/api/v1/connections/**
+              filters:
+                - RewritePath=/api/v1/connections/?(?<segment>.*), /connections/$\{segment}
+                - name: AuthenticationFilter
+
+server:
+  port: 8090
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:9040/eureka
+
+jwt:
+  secretKey: aqnsdjnwdnownowncknnnvoernfcipwdbnpnpi24i94ru0i
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+

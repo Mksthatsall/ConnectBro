@@ -1,0 +1,17 @@
+# Build
+target/
+**/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spring Boot configuration containing secrets
+**/src/main/resources/application.properties
+**/src/main/resources/applicaton.yml
+**/src/main/resources/application.yaml
