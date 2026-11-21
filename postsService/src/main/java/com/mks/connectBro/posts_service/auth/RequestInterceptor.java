@@ -12,8 +12,13 @@ public class RequestInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String userId= request.getHeader("X-User-Id");
-        AuthContextHolder.setCurrentUserId(Long.valueOf(userId));
+        String userId = request.getHeader("X-User-Id");
+        try {
+            AuthContextHolder.setCurrentUserId(Long.valueOf(userId));
+        } catch (RuntimeException ex) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "A valid authenticated user is required");
+            return false;
+        }
         return HandlerInterceptor.super.preHandle(request, response, handler);
     }
     @Override

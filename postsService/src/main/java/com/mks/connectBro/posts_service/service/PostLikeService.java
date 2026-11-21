@@ -4,6 +4,7 @@ package com.mks.connectBro.posts_service.service;
 import com.mks.connectBro.posts_service.auth.AuthContextHolder;
 import com.mks.connectBro.posts_service.entity.Post;
 import com.mks.connectBro.posts_service.entity.PostLike;
+import com.mks.connectBro.posts_service.dto.PostEngagementDto;
 import com.mks.connectBro.posts_service.event.PostLiked;
 import com.mks.connectBro.posts_service.exception.BadRequestException;
 import com.mks.connectBro.posts_service.exception.ResourceNotFoundException;
@@ -25,6 +26,13 @@ public class PostLikeService {
     private final PostRepository postRepository;
     private final ModelMapper modelMapper;
     private final KafkaTemplate<Long, PostLiked> postLikedKafkaTemplate;
+
+    public PostEngagementDto getEngagement(Long postId) {
+        Long userId = AuthContextHolder.getCurrentUserId();
+        postRepository.findById(postId).orElseThrow(() -> new ResourceNotFoundException("Post not found with Id: " + postId));
+        return new PostEngagementDto(postLikeRepository.countByPostId(postId),
+                userId != null && postLikeRepository.existsByUserIdAndPostId(userId, postId));
+    }
 
 
 

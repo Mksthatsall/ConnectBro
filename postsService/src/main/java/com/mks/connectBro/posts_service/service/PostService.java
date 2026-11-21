@@ -19,6 +19,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,19 +41,19 @@ public class PostService {
         post=postRepository.save(post);
 
 
-        List <PersonDto> personDtoList= connectionServiceClient.getFirstDegreeConnections(userId);
-
-
-
-        for(PersonDto person : personDtoList){ //send notification to each connection
-            PostCreated postCreated= PostCreated.builder()
-                    .postId(post.getId())
-                    .content(post.getContent())
-                    .userId(person.getUserId())
-                    .ownerUserId(userId)
-                    .build();
-
-            postCreatedKafkaTemplate.send("post_created_topics", postCreated);
+        try {
+            List<PersonDto> personDtoList = connectionServiceClient.getFirstDegreeConnections(userId);
+            for (PersonDto person : personDtoList) {
+                PostCreated postCreated = PostCreated.builder()
+                        .postId(post.getId())
+                        .content(post.getContent())
+                        .userId(person.getUserId())
+                        .ownerUserId(userId)
+                        .build();
+                postCreatedKafkaTemplate.send("post_created_topics", postCreated);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Post {} saved, but connection notifications could not be queued: {}", post.getId(), ex.getMessage());
         }
 
         return modelMapper.map(post, PostDto.class);
@@ -66,6 +68,23 @@ public class PostService {
         List<Post> postList =postRepository.findByUserId(userId);
 
         return postList.stream().map((element) -> modelMapper.map(element, PostDto.class)).collect(Collectors.toList());
+    }
+
+    public List<PostDto> getFeed(Long userId) {
+        LinkedHashSet<Long> authorIds = new LinkedHashSet<>();
+        authorIds.add(userId);
+        try {
+            List<PersonDto> connections = connectionServiceClient.getFirstDegreeConnections(userId);
+            if (connections != null) {
+                connections.stream().map(PersonDto::getUserId).filter(java.util.Objects::nonNull).forEach(authorIds::add);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Showing the local feed because the connections service is unavailable: {}", ex.getMessage());
+        }
+        return postRepository.findByUserIdIn(authorIds).stream()
+                .sorted(Comparator.comparing(Post::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(post -> modelMapper.map(post, PostDto.class))
+                .collect(Collectors.toList());
     }
 
     public PostDto getPostById(Long postId) {

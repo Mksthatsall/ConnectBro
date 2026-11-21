@@ -22,13 +22,21 @@ public class PostController {
 
 
     private final PostService postService;
+    @GetMapping("/feed")
+    public ResponseEntity<List<PostDto>> getFeed() {
+        Long userId = AuthContextHolder.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(postService.getFeed(userId));
+    }
+
     @PostMapping
     public ResponseEntity<PostDto> createPost(@RequestBody PostCreateRequestDto postCreateRequestDto,
-                                              HttpServletRequest httpServletRequest, Long userId){
-
-
-
-        PostDto postDto= postService.createPost(postCreateRequestDto, 1L);
+                                              HttpServletRequest httpServletRequest){
+        Long userId = AuthContextHolder.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        PostDto postDto= postService.createPost(postCreateRequestDto, userId);
         return new ResponseEntity<>(postDto, HttpStatus.CREATED);
     }
 

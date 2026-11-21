@@ -22,4 +22,25 @@ public class User {
 
     @Column(nullable = false)
     private String password;
+
+    @Column(length = 500)
+    private String headline;
+
+    @Column(length = 2000)
+    private String about;
+
+    @Column(length = 300)
+    private String location;
+
+    @Column(length = 1000)
+    private String profilePicture;
+
+    @Column(length = 2000)
+    private String skills;
+
+    @Column(length = 2000)
+    private String interests;
+
+    @Column(length = 2000)
+    private String goals;
 }

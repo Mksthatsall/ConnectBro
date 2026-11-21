@@ -24,6 +24,10 @@ public class Notification {
     private Long id;
     private Long userId;
     private String message;
+    private String type;
+    private Long referenceId;
+    @Builder.Default
+    private boolean isRead = false;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

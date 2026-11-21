@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
@@ -26,20 +27,29 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory <Authenti
         return ((exchange, chain)-> {
             log.info("Auth request: {}", exchange.getRequest().getURI());
 
+            if (exchange.getRequest().getMethod() == HttpMethod.OPTIONS) return chain.filter(exchange);
+
             final String tokenHeader= exchange.getRequest().getHeaders().getFirst("Authorization");
 
 
-            if(tokenHeader==null || !tokenHeader.startsWith("Bearer")) {
+            if(tokenHeader==null || !tokenHeader.startsWith("Bearer ")) {
                 exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                 return exchange.getResponse().setComplete();
             }
 
-            final String token = tokenHeader.split("Bearer ")[1];
+            final String token = tokenHeader.substring("Bearer ".length()).trim();
+            if (token.isEmpty()) {
+                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                return exchange.getResponse().setComplete();
+            }
 
             try {
                 String userId = jwtService.getUserIdFromToken(token);
               ServerWebExchange mutatedExchange= exchange.mutate()
-                        .request(r-> r.header("X-User-Id", userId))
+                        .request(r -> r.headers(headers -> {
+                            headers.remove("X-User-Id");
+                            headers.set("X-User-Id", userId);
+                        }))
                         .build();
 
               return chain.filter(mutatedExchange);
