@@ -33,6 +33,10 @@ public class RecommendationService {
     @Value("${recommendations.weights.professional-focus:5}") private int professionalWeight;
 
     public RecommendationPageDto recommend(Long userId, int page, int size) {
+        return recommend(userId, page, size, null);
+    }
+
+    public RecommendationPageDto recommend(Long userId, int page, int size, String requestedGoal) {
         if (page < 0 || size < 1 || size > 100) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Page must be non-negative and size must be between 1 and 100");
@@ -59,6 +63,10 @@ public class RecommendationService {
                 .collect(Collectors.toMap(PublicProfileDto::getId, profile -> profile, (first, ignored) -> first));
         PublicProfileDto source = profiles.get(userId);
         if (source == null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Your profile could not be loaded");
+        String goalQuery = requestedGoal == null ? "" : requestedGoal.trim();
+        if (goalQuery.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Goal must be 200 characters or fewer");
+        }
 
         List<PublicProfileDto> profileCorpus = new ArrayList<>(profiles.values());
         List<String> skillCorpus = profileCorpus.stream().map(PublicProfileDto::getSkills).toList();
@@ -77,7 +85,12 @@ public class RecommendationService {
             List<String> sharedGoals = sharedTags(source.getGoals(), profile.getGoals());
             double skillSimilarity = ProfileSimilarity.cosine(source.getSkills(), profile.getSkills(), skillCorpus);
             double interestSimilarity = ProfileSimilarity.cosine(source.getInterests(), profile.getInterests(), interestCorpus);
-            double goalAlignment = ProfileSimilarity.cosine(source.getGoals(), profile.getGoals(), goalCorpus);
+            double profileGoalAlignment = ProfileSimilarity.cosine(source.getGoals(), profile.getGoals(), goalCorpus);
+            double requestedGoalAlignment = goalQuery.isBlank() ? 0 : ProfileSimilarity.cosine(goalQuery,
+                    String.join(" ", Objects.toString(profile.getGoals(), ""), Objects.toString(profile.getSkills(), ""),
+                            Objects.toString(profile.getInterests(), ""), Objects.toString(profile.getHeadline(), "")),
+                    goalCorpus);
+            double goalAlignment = Math.max(profileGoalAlignment, requestedGoalAlignment);
             double professionalSimilarity = ProfileSimilarity.cosine(source.getHeadline(), profile.getHeadline(), headlineCorpus);
             long mutualCount = personRepository.countMutualConnections(userId, candidateId);
 
@@ -90,7 +103,7 @@ public class RecommendationService {
             double maximum = secondDegreeWeight + mutualWeight + skillsWeight + interestsWeight + goalsWeight + professionalWeight;
             int score = maximum <= 0 ? 0 : (int) Math.round(100 * rawScore / maximum);
             List<String> reasons = explain(degree, mutualCount, sharedSkills, sharedInterests, sharedGoals,
-                    skillSimilarity, interestSimilarity, goalAlignment, professionalSimilarity);
+                    skillSimilarity, interestSimilarity, goalAlignment, professionalSimilarity, goalQuery, requestedGoalAlignment);
 
             ranked.add(new RecommendationDto(candidateId, profile.getName(), profile.getHeadline(), profile.getProfilePicture(),
                     (int) Math.min(mutualCount, Integer.MAX_VALUE), sharedSkills, sharedInterests, sharedGoals,
@@ -106,9 +119,11 @@ public class RecommendationService {
 
     private List<String> explain(int degree, long mutualCount, List<String> skills, List<String> interests,
                                  List<String> goals, double skillScore, double interestScore,
-                                 double goalScore, double professionalScore) {
+                                 double goalScore, double professionalScore, String goalQuery, double requestedGoalScore) {
         List<String> reasons = new ArrayList<>();
         if (mutualCount > 0) reasons.add("You have " + mutualCount + " mutual connection" + (mutualCount == 1 ? "." : "s."));
+        reasons.add(mutualCount >= 3 ? "Strong network link (3+ mutual connections)."
+                : mutualCount >= 1 ? "Network link supported by mutual connections." : "Reachable through your wider network.");
         reasons.add(degree == 2 ? "Connected through your second-degree network." : "Connected through your extended professional network.");
         if (!skills.isEmpty()) reasons.add("Shared skills: " + String.join(", ", skills) + ".");
         else if (skillScore >= .35) reasons.add("Your skill profiles are similar (" + percentage(skillScore) + "%).");
@@ -116,6 +131,7 @@ public class RecommendationService {
         else if (interestScore >= .35) reasons.add("You have similar professional interests.");
         if (!goals.isEmpty()) reasons.add("Aligned goals: " + String.join(", ", goals) + ".");
         else if (goalScore >= .3) reasons.add("Your current professional goals align.");
+        if (!goalQuery.isBlank() && requestedGoalScore >= .2) reasons.add("Relevant to your goal: " + goalQuery + ".");
         if (professionalScore >= .35) reasons.add("You have a similar professional focus.");
         return reasons;
     }

@@ -29,8 +29,9 @@ public class ConnectionsController {
     @GetMapping("/recommendations")
     public ResponseEntity<RecommendationPageDto> recommendations(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(recommendationService.recommend(currentUserId(), page, size));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String goal) {
+        return ResponseEntity.ok(recommendationService.recommend(currentUserId(), page, size, goal));
     }
 
     @PostMapping("/requests/{targetUserId}")

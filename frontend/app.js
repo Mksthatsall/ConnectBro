@@ -6,7 +6,7 @@ const API_ROOT = window.CONNECTBRO_API_ROOT || `http://${API_HOST}:8090/api/v1`;
 localStorage.removeItem('connectbro_api');
 const app = document.querySelector('#app');
 const state = { token: localStorage.getItem('connectbro_token'), me: null, view: 'feed', networkTab: 'recommendations',
-  network: null, feed: null, notifications: null, searchTerm: '', searchResults: null, publicProfile: null, unread: 0, recommendPage: 0 };
+  network: null, feed: null, notifications: null, searchTerm: '', searchResults: null, publicProfile: null, unread: 0, recommendPage: 0, recommendationGoal: '' };
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeImage = value => /^https?:\/\//i.test(value || '') ? esc(value) : '';
@@ -213,9 +213,12 @@ async function renderNetwork(host) {
   host.querySelectorAll('[data-tab]').forEach(tab=>tab.onclick=()=>{state.networkTab=tab.dataset.tab;renderView();});
   const target = host.querySelector('#network-list');
   if (state.networkTab==='recommendations') {
-    const page = await api(`/connections/core/recommendations?page=${state.recommendPage}&size=20`);
+    const goalParam = state.recommendationGoal ? `&goal=${encodeURIComponent(state.recommendationGoal)}` : '';
+    const page = await api(`/connections/core/recommendations?page=${state.recommendPage}&size=20${goalParam}`);
     const people = page?.items || [];
     target.innerHTML = `${people.length ? people.map(item=>`<div class="list-row">${avatar(item)}<div class="list-main"><div class="list-name">${esc(item.name||`Professional ${item.userId}`)}</div><div class="list-sub">${esc(item.headline||'ConnectBro member')} · ${item.degree===2?'2nd':'3rd'} degree</div>${item.sharedSkills?.length?`<div class="skill-pills">${item.sharedSkills.map(skill=>`<span class="pill">Skill · ${esc(skill)}</span>`).join('')}</div>`:''}${item.sharedInterests?.length?`<div class="skill-pills">${item.sharedInterests.map(value=>`<span class="pill">Interest · ${esc(value)}</span>`).join('')}</div>`:''}${item.sharedGoals?.length?`<div class="skill-pills">${item.sharedGoals.map(value=>`<span class="pill">Goal · ${esc(value)}</span>`).join('')}</div>`:''}<div class="reason">${(item.reasons||[]).map(esc).join(' ')}</div><div class="reason">Skill fit ${item.skillSimilarity}% · Interest fit ${item.interestSimilarity}% · Goal alignment ${item.goalAlignment}%</div></div><div class="list-actions"><span class="pill">${item.score} match</span><button class="btn btn-outline btn-sm" data-connect="${item.userId}">Connect</button></div></div>`).join('') : empty('No recommendations yet','Add connections and complete your skills, interests, and goals to improve suggestions.','◎')}${page?.total>20?`<div class="composer-footer"><button class="btn btn-outline btn-sm" id="recommend-prev" ${state.recommendPage===0?'disabled':''}>Previous</button><span class="composer-hint">Page ${page.page+1} of ${Math.ceil(page.total/page.size)}</span><button class="btn btn-outline btn-sm" id="recommend-next" ${(page.page+1)*page.size>=page.total?'disabled':''}>Next</button></div>`:''}`;
+    target.insertAdjacentHTML('afterbegin', `<form id="recommend-goal-form" style="display:flex;gap:10px;margin:16px 0"><input name="goal" maxlength="200" value="${esc(state.recommendationGoal)}" placeholder="Optional: what are you looking for? e.g. AI mentor or startup cofounder" style="flex:1;min-width:0"><button class="btn btn-primary btn-sm">Find matches</button></form>`);
+    target.querySelector('#recommend-goal-form')?.addEventListener('submit',event=>{event.preventDefault();state.recommendationGoal=new FormData(event.currentTarget).get('goal').trim();state.recommendPage=0;renderView();});
     target.querySelector('#recommend-prev')?.addEventListener('click',()=>{state.recommendPage--;renderView();});
     target.querySelector('#recommend-next')?.addEventListener('click',()=>{state.recommendPage++;renderView();});
     target.querySelectorAll('[data-connect]').forEach(button=>button.onclick=async()=>{
