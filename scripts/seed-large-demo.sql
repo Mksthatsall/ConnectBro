@@ -7,10 +7,9 @@
 BEGIN;
 INSERT INTO users (id, name, email, password, headline, about, location, profile_picture, skills, interests, goals)
 SELECT 100000 + n,
-       (ARRAY['Avery','Jordan','Taylor','Riley','Morgan','Casey','Quinn','Reese','Cameron','Alex','Sam','Jamie'])[((n - 1) % 12) + 1]
+       (ARRAY['Avery','Jordan','Taylor','Riley','Morgan','Casey','Quinn','Reese','Cameron','Alex','Sam','Jamie','Priya','Arjun','Maya','Noah','Aisha','Ethan','Sofia','Liam','Anika','Daniel','Nia','Lucas','Zara','Omar','Emma','Mateo','Leila','Isaac','Chloe','Ravi','Amara','Theo','Elena','Kabir','Grace','Julian','Isha','Caleb'])[((n - 1) % 40) + 1]
            || ' ' ||
-       (ARRAY['Chen','Patel','Garcia','Kim','Singh','Martin','Brown','Wilson','Shah','Lopez','Davis','Nguyen'])[((n * 7 - 1) % 12) + 1]
-           || ' ' || lpad(n::text, 4, '0'),
+       (ARRAY['Chen','Patel','Garcia','Kim','Singh','Martin','Brown','Wilson','Shah','Lopez','Davis','Nguyen','Mehta','Laurent','Okafor','Hassan','Wright','Park','Silva','Reed','Cooper','Bennett','Brooks','Turner','Flores'])[((n - 1) / 40) + 1],
        format('demo.user.%s@example.test', lpad(n::text, 5, '0')),
        '$2a$10$YQfQ1./ytokmw8ixsP0oG.j8RdsDzCJlzugM4ZP1NuJAV52AUTLEu',
        (ARRAY['Software Engineer','Product Designer','Data Scientist','Founder','Product Manager','ML Engineer','Community Builder','Security Engineer'])[((n - 1) % 8) + 1],
@@ -24,6 +23,12 @@ SELECT 100000 + n,
        (ARRAY['Find a mentor, grow into leadership','Build an AI product, meet collaborators','Change careers, strengthen my portfolio','Launch a startup, find early teammates','Learn system design, contribute to open source','Grow my network, share practical ideas','Find product feedback, validate an idea','Develop expertise, mentor other builders'])[((n * 7 - 1) % 8) + 1]
 FROM generate_series(1, :user_count) AS n
 ON CONFLICT DO NOTHING;
+UPDATE users u
+SET name = (ARRAY['Avery','Jordan','Taylor','Riley','Morgan','Casey','Quinn','Reese','Cameron','Alex','Sam','Jamie','Priya','Arjun','Maya','Noah','Aisha','Ethan','Sofia','Liam','Anika','Daniel','Nia','Lucas','Zara','Omar','Emma','Mateo','Leila','Isaac','Chloe','Ravi','Amara','Theo','Elena','Kabir','Grace','Julian','Isha','Caleb'])[((n - 1) % 40) + 1]
+    || ' ' ||
+       (ARRAY['Chen','Patel','Garcia','Kim','Singh','Martin','Brown','Wilson','Shah','Lopez','Davis','Nguyen','Mehta','Laurent','Okafor','Hassan','Wright','Park','Silva','Reed','Cooper','Bennett','Brooks','Turner','Flores'])[((n - 1) / 40) + 1]
+FROM generate_series(1, :user_count) AS n
+WHERE u.id = 100000 + n;
 SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST(COALESCE((SELECT max(id) FROM users), 1), 1), true);
 COMMIT;
 \echo 'Seeded synthetic profiles in userservice_db.'

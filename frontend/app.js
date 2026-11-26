@@ -6,7 +6,7 @@ const API_ROOT = window.CONNECTBRO_API_ROOT || `http://${API_HOST}:8090/api/v1`;
 localStorage.removeItem('connectbro_api');
 const app = document.querySelector('#app');
 const state = { token: localStorage.getItem('connectbro_token'), me: null, view: 'feed', networkTab: 'recommendations',
-  network: null, feed: null, notifications: null, searchTerm: '', searchResults: null, publicProfile: null, unread: 0, recommendPage: 0, recommendationGoal: '' };
+  network: null, feed: null, notifications: null, searchTerm: '', searchResults: null, publicProfile: null, unread: 0, recommendPage: 0, recommendationGoal: '', relationships: new Map() };
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeImage = value => /^https?:\/\//i.test(value || '') ? esc(value) : '';
@@ -44,7 +44,7 @@ async function api(path, options = {}) {
     throw new Error('Your session expired. Please sign in again.');
   }
   if (!response.ok) {
-    const message = body?.message || body?.error || body || `Request failed (${response.status})`;
+    const message = body?.message || body?.detail || body?.error || body || `Request failed (${response.status})`;
     throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
   }
   return body;
@@ -54,6 +54,56 @@ function toast(message, error = false) {
   document.querySelector('.toast')?.remove();
   const node = document.createElement('div'); node.className = `toast${error ? ' error' : ''}`; node.textContent = message;
   document.body.append(node); setTimeout(() => node.remove(), 3600);
+}
+
+async function refreshRelationshipStates() {
+  const [connections, outgoing, incoming] = await Promise.all([
+    api('/connections/core/connections'), api('/connections/core/requests/outgoing'), api('/connections/core/requests/incoming')
+  ]);
+  const relationships = new Map();
+  (connections || []).forEach(row => {
+    const otherId = Number(row.lowUserId) === Number(state.me?.id) ? row.highUserId : row.lowUserId;
+    relationships.set(Number(otherId), {kind:'connected'});
+  });
+  (outgoing || []).forEach(row => relationships.set(Number(row.receiverUserId), {kind:'pending-sent', requestId:row.id}));
+  (incoming || []).forEach(row => relationships.set(Number(row.requesterUserId), {kind:'pending-received', requestId:row.id}));
+  state.relationships = relationships;
+}
+
+function connectionButton(userId) {
+  const relation = state.relationships.get(Number(userId));
+  if (Number(userId) === Number(state.me?.id)) return '';
+  if (relation?.kind === 'connected') return `<button class="btn btn-secondary btn-sm" disabled>Connected</button>`;
+  if (relation?.kind === 'pending-sent') return `<button class="btn btn-secondary btn-sm" disabled>Request sent</button>`;
+  if (relation?.kind === 'pending-received') return `<button class="btn btn-primary btn-sm" data-accept-request="${relation.requestId}">Accept request</button>`;
+  return `<button class="btn btn-outline btn-sm" data-connect="${Number(userId)}">Connect</button>`;
+}
+
+function bindConnectionButtons(container) {
+  container.querySelectorAll('[data-connect]').forEach(button => button.onclick = async () => {
+    const userId = Number(button.dataset.connect);
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    try {
+      await api(`/connections/core/requests/${userId}`, {method:'POST'});
+      state.relationships.set(userId, {kind:'pending-sent'});
+      button.textContent = 'Request sent';
+      button.classList.remove('btn-outline'); button.classList.add('btn-secondary');
+      toast('Connection request sent.');
+    } catch (error) {
+      button.disabled = false; button.textContent = 'Connect';
+      toast(error.message, true);
+    }
+  });
+  container.querySelectorAll('[data-accept-request]').forEach(button => button.onclick = async () => {
+    button.disabled = true; button.textContent = 'Accepting…';
+    try {
+      await api(`/connections/core/requests/${button.dataset.acceptRequest}/accept`, {method:'POST'});
+      toast('Connection accepted.');
+      await refreshRelationshipStates();
+      await renderView();
+    } catch (error) { button.disabled = false; button.textContent = 'Accept request'; toast(error.message, true); }
+  });
 }
 
 function renderAuth(register = false) {
@@ -221,10 +271,7 @@ async function renderNetwork(host) {
     target.querySelector('#recommend-goal-form')?.addEventListener('submit',event=>{event.preventDefault();state.recommendationGoal=new FormData(event.currentTarget).get('goal').trim();state.recommendPage=0;renderView();});
     target.querySelector('#recommend-prev')?.addEventListener('click',()=>{state.recommendPage--;renderView();});
     target.querySelector('#recommend-next')?.addEventListener('click',()=>{state.recommendPage++;renderView();});
-    target.querySelectorAll('[data-connect]').forEach(button=>button.onclick=async()=>{
-      button.disabled=true;try{await api(`/connections/core/requests/${button.dataset.connect}`,{method:'POST'});toast('Connection request sent.');await renderView();}
-      catch(error){button.disabled=false;toast(error.message,true);}
-    });
+    bindConnectionButtons(target);
   } else if (state.networkTab==='connections') {
     const rows = await api('/connections/core/connections');
     const ids = (rows||[]).map(row=>Number(row.lowUserId)===Number(state.me.id)?row.highUserId:row.lowUserId);
@@ -256,9 +303,10 @@ async function renderSearch(host) {
     <section class="card" id="search-results">${state.searchResults===null?empty('Search your professional community','Try a person’s name, a skill, or a role.','⌕'):''}</section>`;
   host.querySelector('#search-form').onsubmit=async event=>{event.preventDefault();state.searchTerm=new FormData(event.currentTarget).get('q').trim();try{state.searchResults=await api(`/users/search?q=${encodeURIComponent(state.searchTerm)}`);await renderView();}catch(error){toast(error.message,true);}};
   if(state.searchResults){const results=host.querySelector('#search-results');
-    results.innerHTML=state.searchResults.length?state.searchResults.filter(user=>Number(user.id)!==Number(state.me.id)).map(user=>personRow(user,'',`<button class="btn btn-quiet btn-sm" data-profile="${user.id}">Profile</button><button class="btn btn-outline btn-sm" data-connect="${user.id}">Connect</button>`)).join(''):empty('No people found','Try a broader name, skill or role.','⌕');
+    try { await refreshRelationshipStates(); } catch (error) { toast(error.message,true); }
+    results.innerHTML=state.searchResults.length?state.searchResults.filter(user=>Number(user.id)!==Number(state.me.id)).map(user=>personRow(user,'',`<button class="btn btn-quiet btn-sm" data-profile="${user.id}">Profile</button>${connectionButton(user.id)}`)).join(''):empty('No people found','Try a broader name, skill or role.','⌕');
     results.querySelectorAll('[data-profile]').forEach(button=>button.onclick=()=>openProfile(button.dataset.profile));
-    results.querySelectorAll('[data-connect]').forEach(button=>button.onclick=async()=>{try{await api(`/connections/core/requests/${button.dataset.connect}`,{method:'POST'});toast('Connection request sent.');button.textContent='Sent';button.disabled=true;}catch(error){toast(error.message,true);}});
+    bindConnectionButtons(results);
   }
 }
 
@@ -287,13 +335,14 @@ function field(label,name,value,placeholder){return `<div class="field"><label f
 
 async function renderPublicProfile(host) {
   const profile=state.publicProfile;
+  try { await refreshRelationshipStates(); } catch (error) { toast(error.message,true); }
   host.innerHTML=`${heading('Professional profile','A member of your extended community.',`<button class="btn btn-outline btn-sm" data-view="search">← Back to search</button>`)}
     <section class="card"><div class="profile-cover"></div><div class="profile-top">${avatar(profile)}<div class="profile-info"><h2>${esc(profile.name)}</h2><p>${esc(profile.headline||'ConnectBro member')}${profile.location?` · ${esc(profile.location)}`:''}</p></div></div>
       <p class="profile-about">${esc(profile.about||'')}</p><h3 class="section-title">Skills</h3><div class="skill-pills">${skillPills(profile.skills)||'<span class="list-sub">No skills listed yet.</span>'}</div>
       <h3 class="section-title" style="margin-top:20px">Interests</h3><div class="skill-pills">${skillPills(profile.interests)||'<span class="list-sub">No interests listed yet.</span>'}</div>
       <h3 class="section-title" style="margin-top:20px">Current goals</h3><div class="skill-pills">${skillPills(profile.goals)||'<span class="list-sub">No goals listed yet.</span>'}</div>
-      <button class="btn btn-primary" data-connect="${profile.id}">Connect</button></section>`;
-  host.querySelector('[data-connect]').onclick=async()=>{try{await api(`/connections/core/requests/${profile.id}`,{method:'POST'});toast('Connection request sent.');}catch(error){toast(error.message,true);}};
+      ${connectionButton(profile.id)}</section>`;
+  bindConnectionButtons(host);
   host.querySelector('[data-view]').onclick=()=>navigate('search');
 }
 

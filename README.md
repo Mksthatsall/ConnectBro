@@ -66,6 +66,8 @@ docker exec postgres_db psql -U springuser -d postgres -v ON_ERROR_STOP=1 -f /tm
 
 It adds 1,000 synthetic profiles, 3,000 posts, 9,000 likes, 1,000 comments, 3,000 accepted connections, and 500 notifications without deleting existing rows. The generated accounts are `demo.user.00001@example.test` through `demo.user.01000@example.test`; they all use `ConnectBroDemo2026!`. Accepted connections are written to the PostgreSQL graph outbox and are copied into Neo4j when `ConnectionsService` is running against the `connectbrodb` database.
 
+For a ready-to-view recommendation example, run `scripts/seed-recommendation-demo.sql` the same way. It adds 4 bridge profiles and 50 goal-matched candidate profiles, then creates accepted paths that place 32 candidates at two hops and 18 at three hops from the Avery demo account and the local test profile (user ID 10). The accepted edges go through PostgreSQL's outbox and sync to Neo4j. Sign in as `avery.demo@connectbro.example` / `ConnectBroDemo42!`, open **My network → Recommendations**, and optionally enter a goal such as `find an AI mentor`.
+
 ## Main API routes
 
 - Users: `POST /api/v1/users/auth/signup`, `POST /api/v1/users/auth/login`, `GET/PUT /api/v1/users/me`, `GET /api/v1/users/profiles/{userId}`, `GET /api/v1/users/profiles/batch?ids=1,2`, `GET /api/v1/users/search?q=...`.

@@ -13,7 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 
@@ -22,7 +22,7 @@ import java.util.List;
 public class ConnectionRequestService {
     private final ConnectionRequestRepository requestRepository;
     private final GraphSyncEventRepository graphSyncEventRepository;
-    private final KafkaTemplate<Long, Object> kafkaTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(transactionManager = "transactionManager")
     public ConnectionRequest send(Long requesterId, Long receiverId) {
@@ -48,7 +48,7 @@ public class ConnectionRequestService {
         request.setStatus(ConnectionStatus.PENDING);
         try {
             ConnectionRequest saved = requestRepository.saveAndFlush(request);
-            kafkaTemplate.send("connection_request_topic", new ConnectionRequestedEvent(receiverId, requesterId));
+            eventPublisher.publishEvent(new ConnectionRequestedEvent(receiverId, requesterId));
             return saved;
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -74,7 +74,7 @@ public class ConnectionRequestService {
         request.setStatus(ConnectionStatus.ACCEPTED);
         requestRepository.saveAndFlush(request);
         queueGraphSync("UPSERT", request.getRequesterUserId(), request.getReceiverUserId());
-        kafkaTemplate.send("connection_accepted_topic", new ConnectionAcceptedEvent(
+        eventPublisher.publishEvent(new ConnectionAcceptedEvent(
                 request.getRequesterUserId(), request.getReceiverUserId()));
         return request;
     }
